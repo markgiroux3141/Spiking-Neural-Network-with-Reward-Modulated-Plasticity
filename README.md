@@ -37,6 +37,39 @@ python train.py --steps 40000
 agent-steps spent in reward vs punishment regions, measured over the steady-state
 (final 40%) of the run so early exploration doesn't dilute converged behavior.
 
+## Behavioral evaluation
+
+```bash
+python evaluate.py                 # all controllers
+python evaluate.py --mode learn
+```
+
+`evaluate.py` scores the *behaviors* we care about (at steady state), validated
+against the hand-wired reflex as ground truth:
+
+| controller | in_rew | in_pun | →green | turn_off_red | green_dwell | red_dwell |
+|---|---|---|---|---|---|---|
+| reflex (ceiling) | 0.891 | 0.000 | 0.91 | 0.55 | 45 | 0 |
+| **learn** | 0.108 | 0.090 | 0.70 | −0.06 | 168 | 146 |
+| frozen | 0.049 | 0.038 | 0.67 | −0.02 | 293 | 334 |
+| random | 0.013 | 0.004 | 0.40 | 0.00 | 45 | 60 |
+
+- `→green`: velocity alignment toward a *visible* reward (+1 = straight at it, 0 = chance).
+- `turn_off_red`: deg/step turning away from the side a *visible* punishment is on
+  (+ = avoiding, 0 = random — the metric is debiased so a non-avoider scores 0).
+- `dwell`: median consecutive steps per region visit.
+
+**What the agents actually learn:** they **seek and stay in green** — steering
+toward visible reward well above chance (0.70 vs 0.40) and dwelling ~3.7× longer
+than random — but they do **not** learn to actively **avoid red** (`turn_off_red`
+≈ 0 vs the reflex's 0.55). The learned green > red discrimination comes almost
+entirely from *attraction to reward*, not *avoidance of punishment*. This is the
+expected asymmetry: seeking gets a direct "go here → +reward" signal, while
+avoidance must be inferred from the *absence* of reward — a weaker teaching signal
+for local plasticity. Strengthening avoidance (e.g. higher punishment-channel
+salience, a steeper repulsive shaping field, or an inhibitory pathway) is open
+work.
+
 ## Results
 
 Reward-modulated STDP **learns to seek reward** from local plasticity + a global
