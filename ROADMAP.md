@@ -28,6 +28,54 @@ connects all three of the directions below.
 
 ---
 
+## ▶ STATUS — where to pick up (2026-07-02)
+
+Phases A and A.2 are **built, tested (18 tests pass), and in the working tree**,
+committed as "Phase A + A.2: E/I inhibition, interoception, TD(λ) critic". What we
+learned, honestly:
+
+**Component-level wins (verified):**
+- **E/I / Dale's law** implemented (`snn/synapses.py` signed current + per-column
+  plasticity mask; `snn/network.py` inhibitory hidden pool with structured
+  directional veto onto motor pools).
+- **Interoception** (`in_reward`/`in_punish` sensors) reliably speeds red-escape —
+  `red_dwell` dropped ~4× (≈400 → ≈105). Clear principled win.
+- **TD(λ) critic** (`snn/network.py`) replaced the hand-shaped potential *and* the
+  global baseline. Probe confirms it learns correct values: **V(green) ≈ +7.6,
+  V(neutral) ≈ 0, V(red) ≈ −9.4**. No privileged info — a genuine de-hack.
+- Learned **`→green` steering stays above chance** across seeds (0.63–0.70 vs
+  random 0.34–0.40).
+
+**The honest bottom line (open):** across **6 seeds**, learning's steady-state
+discrimination (in_reward − in_punish) is **+0.011 ± 0.024** vs frozen
+**−0.003 ± 0.018** — a positive but **not statistically significant** edge
+(t ≈ 1.2). The seed-0 "+0.032 win" was an outlier. So the *mechanisms* work
+individually, but a **robust end-to-end behavioral win over the frozen baseline is
+not yet established**, and **proactive avoidance never emerged** (`turn_off_red`
+stays ≈ 0 — avoidance is reactive-escape, not veer-away-at-distance).
+
+**Why:** "frozen" is a strong baseline (full architecture + strong vision drive →
+already vision-contingent), and 40k steps (~40 s sim) is very short for RL-STDP+TD
+to converge. The metric is also noisy (12 agents, one region layout per seed).
+
+**PICK UP HERE — three candidate next steps (a decision was pending):**
+1. **Long-training test** — run 200k+ steps × several seeds to see if the learning
+   edge *grows* with convergence (the key untested variable). Cheapest to try.
+2. **Make learning matter more** — faster region drift/respawn so the strong
+   frozen baseline can't luck into nearby static regions and the agent must
+   actually adapt; then re-run the 6-seed comparison (expect the gap to widen).
+3. **Stress → exploration (Phase A.2 item 2, not yet built)** — neuromodulatory
+   scalar = leak-integral of negative TD error, scaling exploration noise. Targets
+   the still-missing proactive avoidance and the "desperation to escape" dynamics.
+
+Measurement notes for whoever continues: use the **multi-seed mean ± std** (see
+`evaluate.py`; a 6-seed sweep script pattern lives in the session scratchpad), not
+a single seed — single-seed results here are within noise. Config knobs for this
+work: `use_td_critic`, `td_gamma/td_lambda/td_lr/value_clip`, `interoception`,
+`inhib_fraction/inhib_plastic/inhib_w_scale`, `shaping_gain` (0 = critic-only).
+
+---
+
 ## Phase A — Excitatory/inhibitory populations + inhibition (the avoidance fix)
 
 **Goal:** give the network a withdrawal/veto pathway so it can learn to avoid red,
@@ -65,6 +113,43 @@ an inhibitory synapse delivers negative current and an I-driven post neuron's
 rate drops.
 
 ---
+
+## Phase A.2 — Reward as a *relative* signal + neuromodulation (the principled avoidance fix)
+
+**Insight.** The seek/avoid asymmetry is not only architectural — it lives in the
+reward *representation*. Absolute reward gives a strong signal for reaching green
+and almost none for leaving red. Two biologically-core principles fix it
+generally; both fall out of one quantity — the **prediction error**
+δ = reward − expectation — so neither is red-specific.
+
+1. **Relative / prediction-error reward (dopamine = TD error).** Drive plasticity
+   by reward *relative to expectation*, not absolute level. Then "escaped red"
+   (better than expected) is as rewarding as "reached green" — the asymmetry
+   dissolves. The general form is a **learned value/critic**:
+   δ = R + γ·V(s′) − V(s). This is what dopamine computes (Schultz; Montague &
+   Dayan), it matches **relief learning** (escape-from-aversive is appetitive),
+   and it lets us **delete the hand-shaped potential** (which uses privileged
+   region positions) — strictly *less* hacking. Keystone of the avoidance fix.
+
+2. **Neuromodulatory exploration gain ("stress" / LC-NE).** A scalar that
+   leak-integrates *negative* prediction error and scales exploration noise /
+   neural gain. Stuck in a bad state → exploration rises ("desperation" / protean
+   escape) → stumbles out; improvement → settles back to exploitation. Driven by
+   the *same* δ as (1). Composes with homeostatic boredom: both are exploration
+   drives — one from under-activity, one from under-performance. (Aston-Jones &
+   Cohen 2005 adaptive gain; stress/frustration-induced behavioral variability,
+   Neuringer.)
+
+3. **Interoception / nociception (perception).** Rays skip the region you're in,
+   so the agent is blind to the red it occupies and can't react. Add `in_reward`
+   / `in_punish` internal sensors so there's a percept to escape from.
+
+These three + the E/I inhibition substrate (Phase A) are the principled package:
+perceive the danger, get a symmetric learning signal, feel urgency to escape, and
+have an inhibitory/withdrawal motor substrate. All are global, outcome-driven
+rules — not red-specific hacks. Judge with `evaluate.py` (`turn_off_red`,
+`red_dwell`, `in_pun`), expecting avoidance to finally rise without hurting
+seeking.
 
 ## Phase B — Spatial embedding + conduction delays
 

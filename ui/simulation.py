@@ -102,8 +102,10 @@ class Simulation:
         """One SNN-driven step: sense -> spike -> motor -> reward update."""
         cfg = self.cfg
         motor = np.zeros((cfg.n_agents, 2))
+        in_r0, in_p0 = self.world.occupancy()   # interoception: where am I NOW
         for a in self.agents:
             in_spikes = a.encoder.encode(self.proximity[a.idx], self.hit_type[a.idx],
+                                         bool(in_r0[a.idx]), bool(in_p0[a.idx]),
                                          a.enc_rng)
             out_spikes = a.net.step(in_spikes)
             motor[a.idx] = a.decoder.decode(out_spikes)

@@ -35,19 +35,28 @@ class SensoryEncoder:
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self.n_channels = len(cfg.vision_channels)
-        self.n_input = cfg.n_rays * self.n_channels
+        self.n_vision = cfg.n_rays * self.n_channels
+        # interoception: 2 internal sensors [in_reward (satiation), in_punish
+        # (nociception)] that fire when the agent is inside a region. Rays skip the
+        # region you're in, so this is the only signal that you're in danger.
+        self.n_intero = 2 if cfg.interoception else 0
+        self.n_input = self.n_vision + self.n_intero
         self.p_scale = cfg.max_input_rate * cfg.dt / 1000.0  # spike prob at proximity=1
         self.last_rates = np.zeros(self.n_input)  # for the UI
 
     def encode(self, proximity: np.ndarray, hit_type: np.ndarray,
+               in_reward: bool, in_punish: bool,
                rng: np.random.Generator) -> np.ndarray:
-        """proximity (n_rays,), hit_type (n_rays,) -> bool spikes (n_input,)."""
+        """rays + interoception -> bool spikes (n_input,)."""
         rates = np.zeros(self.n_input)
         for ray in range(self.cfg.n_rays):
             ch = _TYPE_TO_CHANNEL.get(int(hit_type[ray]))
             if ch is None:
                 continue
             rates[ray * self.n_channels + ch] = proximity[ray]
+        if self.n_intero:
+            rates[self.n_vision + 0] = 1.0 if in_reward else 0.0   # satiation
+            rates[self.n_vision + 1] = 1.0 if in_punish else 0.0   # nociception
         self.last_rates = rates
         p = rates * self.p_scale
         return rng.random(self.n_input) < p
